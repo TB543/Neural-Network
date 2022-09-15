@@ -1,15 +1,21 @@
-from numpy import array as _vector, exp as _exp, set_printoptions as _set_printoptions, inf as _inf, sum as _sum
+from numpy import array as _vector, exp as _exp, set_printoptions as _set_printoptions, inf as _inf, log as _ln
 
 
 class NeuralNetwork:
     """
     a neural network class for artificial learning
+
+    todo:
+     add way to initialize weights/biases to random values instead of 0
+     add way to apply different activation functions
+     add way to change range of possible values
+     change learning rate based on cost to learn faster
     """
 
     # configures setting to save all of the arrays/vectors for the layers, weights and biases
     _set_printoptions(threshold=_inf)
 
-    def __init__(self, layers: list[int] or str):
+    def __init__(self, layers: list or str) -> None:
         """
         creates neural network with all neurons, weights and biases set to 0
 
@@ -38,7 +44,7 @@ class NeuralNetwork:
         else:
             raise TypeError('invalid variable type given should be string or list')
 
-    def get_outputs(self, inputs: list[float]):
+    def get_outputs(self, inputs: list) -> list:
         """
         calculates the outputs of the network
 
@@ -63,53 +69,54 @@ class NeuralNetwork:
         # returns final layer as a list
         return self.layers[-1].tolist()
 
-    def back_propagate(self, expected_outputs: list[float], learning_rate: float = .05):
+    def back_propagate(self, expected_outputs: list, learning_rate: float = .05) -> float:
         """
         the way the network "learns" note: self.get_outputs must be run before back propagation is preformed
 
         :param expected_outputs: the expected output variables for output (last) layer of the network
-        :param learning_rate: the pace at which the network learns, default is .05
+        :param learning_rate: the pace at which the network learns, should be positive, default is .05
 
         :return: the cost function used for the calculations
         """
 
         # checks for errors
-        if (not isinstance(expected_outputs, list)) or \
+        if (not isinstance(expected_outputs, list)) or learning_rate < 0 or \
                 [isinstance(value, (float, int)) and 1 >= value >= 0 for value in expected_outputs].count(False) > 0 \
                 or len(expected_outputs) != len(self.layers[-1]):
             raise ValueError('invalid expected outputs given, make sure the length of inputs is equal to the length of '
-                             'the output (last) layer of the network\nalso the expected outputs should only be values '
-                             'between 0 and 1')
+                             'the output (last) layer of the network\nthe expected outputs should only be values '
+                             'between 0 and 1\nadditionally the learning rate should only be positive')
 
-        # calculates cost
-        cost = (self.layers[-1] - _vector(expected_outputs)).sum() ** 2
+        # calculates partial derivative for cost / weighted sum of output layer
+        current_derivative = _vector([2 * (self.layers[-1][neuron_index] - expected_outputs[neuron_index]) *
+                                      self._sigmoid_prime(self._inverse_sigmoid(self.layers[-1][neuron_index]))
+                                      for neuron_index in range(len(self.layers[-1]))])
 
-        # performs backpropagation on output layer
-        for neuron_index in range(len(self.layers[-1])):
-            2 * ()
+        # goes backwards through every layer
+        for layer_index in reversed(range(len(self.layers) - 1)):
 
-        # performs backpropagation on hidden layers
-        for layer_index in range(len(self.layers)):
-            pass
+            # updates biases
+            for neuron_index in range(len(self.biases[layer_index])):
+                self.biases[layer_index][neuron_index] -= current_derivative[neuron_index] * learning_rate
 
-            # finds optimal change for weights
+            # updates weights
+            old_weights = self.weights[layer_index].copy()
+            for next_neuron_index in range(len(self.weights[layer_index])):
+                for previous_neuron_index in range(len(self.weights[layer_index][next_neuron_index])):
+                    self.weights[layer_index][next_neuron_index][previous_neuron_index] -= current_derivative[
+                        next_neuron_index] * self.layers[layer_index][previous_neuron_index] * learning_rate
 
-            # finds optimal change for biases
+            # updates the partial derivative for the next layer to update
+            current_derivative = current_derivative.dot(old_weights)
+            for neuron_index in range(len(current_derivative)):
+                current_derivative[neuron_index] = current_derivative[neuron_index] * \
+                    self._sigmoid_prime(self._inverse_sigmoid(self.layers[layer_index][neuron_index]))
 
-        """
-        notes:
-        
-        d cost to neuron = 2(actual - expected)
-        d neuron to weighted sum = neuron * (1 - neuron)
-        d weighted sum to connection weight = previous neuron
-        d weighted sum to neuron = weight
-        d weighted sum to bias = 1
-        
-        """
+        # returns the cost of the network
+        return sum([(self.layers[-1][neuron_index] - expected_outputs[neuron_index]) ** 2
+                    for neuron_index in range(len(self.layers[-1]))])
 
-        return cost
-
-    def save(self):
+    def save(self) -> str:
         """
         saves the data for the current network
 
@@ -118,7 +125,7 @@ class NeuralNetwork:
 
         return str(vars(self)).replace('array', '_vector')
 
-    def load(self, data: str):
+    def load(self, data: str) -> None:
         """
         loads a previously saved neural network note: this will override current network
 
@@ -137,14 +144,37 @@ class NeuralNetwork:
             raise TypeError('invalid data given, data should be the string that is given from self.save()')
 
     @staticmethod
-    def _sigmoid(value: float):
+    def _sigmoid(value: float) -> float:
         """
         the activation function for this neural network is the sigmoid function: 1/(1 + e^-x), this hidden method
         applies this function to the given value
 
         :param value: the weighted sum of the neuron
 
-        :return: the weighted sum after the sigmoid is applied
+        :return: the activation value of the neuron
         """
 
         return 1 / (1 + _exp(-value))
+
+    def _sigmoid_prime(self, value: float) -> float:
+        """
+        the derivative of the sigmoid function
+
+        :param value: the value to plug into the function
+
+        :return: the derivative of the sigmoid function
+        """
+
+        return self._sigmoid(value) * (1 - self._sigmoid(value))
+
+    @staticmethod
+    def _inverse_sigmoid(value: float) -> float:
+        """
+        undoes the sigmoid function to get the weighted sum during back propagation
+
+        :param value: the activation value of the neuron
+
+        :return: the weighted sum of the neuron
+        """
+
+        return _ln(value / (1 - value))
